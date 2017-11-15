@@ -1,0 +1,345 @@
+L 1 "..\..\..\..\..\..\external\segger_rtt\RTT_Syscalls_KEIL.c"
+N/*********************************************************************
+N*               SEGGER MICROCONTROLLER GmbH & Co. KG                 *
+N*       Solutions for real time microcontroller applications         *
+N**********************************************************************
+N*                                                                    *
+N*       (c) 2014 - 2015  SEGGER Microcontroller GmbH & Co. KG        *
+N*                                                                    *
+N*       www.segger.com     Support: support@segger.com               *
+N*                                                                    *
+N**********************************************************************
+N*                                                                    *
+N* All rights reserved.                                               *
+N*                                                                    *
+N* * This software may in its unmodified form be freely redistributed *
+N*   in source form.                                                  *
+N* * The source code may be modified, provided the source code        *
+N*   retains the above copyright notice, this list of conditions and  *
+N*   the following disclaimer.                                        *
+N* * Modified versions of this software in source or linkable form    *
+N*   may not be distributed without prior consent of SEGGER.          *
+N* * This software may only be used for communication with SEGGER     *
+N*   J-Link debug probes.                                             *
+N*                                                                    *
+N* THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND             *
+N* CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES,        *
+N* INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF           *
+N* MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE           *
+N* DISCLAIMED. IN NO EVENT SHALL SEGGER Microcontroller BE LIABLE FOR *
+N* ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR           *
+N* CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT  *
+N* OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS;    *
+N* OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF      *
+N* LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT          *
+N* (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE  *
+N* USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH   *
+N* DAMAGE.                                                            *
+N*                                                                    *
+N**********************************************************************
+N--------- END-OF-HEADER --------------------------------------------
+NFile    : RTT_Syscalls_KEIL.c
+NPurpose : Retargeting module for KEIL MDK-CM3.
+N          Low-level functions for using printf() via RTT
+N----------------------------------------------------------------------
+N*/
+N
+N#if defined(NRF_LOG_USES_RTT) && NRF_LOG_USES_RTT == 1
+X#if 0L && NRF_LOG_USES_RTT == 1
+S
+S#include <stdio.h>
+S#include <stdlib.h>
+S#include <string.h>
+S#include <rt_sys.h>
+S#include <rt_misc.h>
+S
+S#include "SEGGER_RTT.h"
+S/*********************************************************************
+S*
+S*       #pragmas
+S*
+S**********************************************************************
+S*/
+S#ifndef NRF_LOG_USES_RTT
+S#pragma import(__use_no_semihosting)
+S#endif
+S#ifdef _MICROLIB
+S  #pragma import(__use_full_stdio)
+S#endif
+S
+S/*********************************************************************
+S*
+S*       Defines non-configurable
+S*
+S**********************************************************************
+S*/
+S
+S/* Standard IO device handles - arbitrary, but any real file system handles must be
+S   less than 0x8000. */
+S#define STDIN             0x8001    // Standard Input Stream
+S#define STDOUT            0x8002    // Standard Output Stream
+S#define STDERR            0x8003    // Standard Error Stream
+S
+S/*********************************************************************
+S*
+S*       Public const
+S*
+S**********************************************************************
+S*/
+Sconst char __stdin_name[]  = "STDIN";
+Sconst char __stdout_name[] = "STDOUT";
+Sconst char __stderr_name[] = "STDERR";
+S
+S/*********************************************************************
+S*
+S*       Public code
+S*
+S**********************************************************************
+S*/
+S
+S/*********************************************************************
+S*
+S*       _ttywrch
+S*
+S*  Function description:
+S*    Outputs a character to the console
+S*
+S*  Parameters:
+S*    c    - character to output
+S*
+S*/
+Svoid _ttywrch(int c) {
+S  fputc(c, stdout); // stdout
+S  fflush(stdout);
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_open
+S*
+S*  Function description:
+S*    Opens the device/file in order to do read/write operations
+S*
+S*  Parameters:
+S*    sName        - sName of the device/file to open
+S*    OpenMode    - This parameter is currently ignored
+S*
+S*  Return value:
+S*    != 0     - Handle to the object to open, otherwise
+S*    == 0     -"device" is not handled by this module
+S*
+S*/
+SFILEHANDLE _sys_open(const char * sName, int OpenMode) {
+S  // Register standard Input Output devices.
+S  if (strcmp(sName, __stdout_name) == 0) {
+S    return (STDOUT);
+S  } else if (strcmp(sName, __stderr_name) == 0) {
+S    return (STDERR);
+S  } else
+S  return (0);  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_close
+S*
+S*  Function description:
+S*    Closes the handle to the open device/file
+S*
+S*  Parameters:
+S*    hFile    - Handle to a file opened via _sys_open
+S*
+S*  Return value:
+S*    0     - device/file closed
+S*
+S*/
+Sint _sys_close(FILEHANDLE hFile) {
+S  return 0;  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_write
+S*
+S*  Function description:
+S*    Writes the data to an open handle.
+S*    Currently this function only outputs data to the console
+S*
+S*  Parameters:
+S*    hFile    - Handle to a file opened via _sys_open
+S*    pBuffer  - Pointer to the data that shall be written
+S*    NumBytes      - Number of bytes to write
+S*    Mode     - The Mode that shall be used
+S*
+S*  Return value:
+S*    Number of bytes *not* written to the file/device
+S*
+S*/
+Sint _sys_write(FILEHANDLE hFile, const unsigned char * pBuffer, unsigned NumBytes, int Mode) {
+S  int r = 0;
+S
+S  if (hFile == STDOUT) {
+S    return NumBytes - SEGGER_RTT_Write(0, (const char*)pBuffer, NumBytes);
+S  }
+S  return r;
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_read
+S*
+S*  Function description:
+S*    Reads data from an open handle.
+S*    Currently this modules does nothing.
+S*
+S*  Parameters:
+S*    hFile    - Handle to a file opened via _sys_open
+S*    pBuffer  - Pointer to buffer to store the read data
+S*    NumBytes      - Number of bytes to read
+S*    Mode     - The Mode that shall be used
+S*
+S*  Return value:
+S*    Number of bytes read from the file/device
+S*
+S*/
+Sint _sys_read(FILEHANDLE hFile, unsigned char * pBuffer, unsigned NumBytes, int Mode) {
+S  return (0);  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_istty
+S*
+S*  Function description:
+S*    This function shall return whether the opened file
+S*    is a console device or not.
+S*
+S*  Parameters:
+S*    hFile    - Handle to a file opened via _sys_open
+S*
+S*  Return value:
+S*    1       - Device is     a console
+S*    0       - Device is not a console
+S*
+S*/
+Sint _sys_istty(FILEHANDLE hFile) {
+S  if (hFile > 0x8000) {
+S    return (1);
+S  }
+S  return (0);  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_seek
+S*
+S*  Function description:
+S*    Seeks via the file to a specific position
+S*
+S*  Parameters:
+S*    hFile  - Handle to a file opened via _sys_open
+S*    Pos    -
+S*
+S*  Return value:
+S*    int       -
+S*
+S*/
+Sint _sys_seek(FILEHANDLE hFile, long Pos) {
+S  return (0);  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_ensure
+S*
+S*  Function description:
+S*
+S*
+S*  Parameters:
+S*    hFile    - Handle to a file opened via _sys_open
+S*
+S*  Return value:
+S*    int       -
+S*
+S*/
+Sint _sys_ensure(FILEHANDLE hFile) {
+S  return (-1);  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_flen
+S*
+S*  Function description:
+S*    Returns the length of the opened file handle
+S*
+S*  Parameters:
+S*    hFile    - Handle to a file opened via _sys_open
+S*
+S*  Return value:
+S*    Length of the file
+S*
+S*/
+Slong _sys_flen(FILEHANDLE hFile) {
+S  return (0);  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_tmpnam
+S*
+S*  Function description:
+S*    This function converts the file number fileno for a temporary
+S*    file to a unique filename, for example, tmp0001.
+S*
+S*  Parameters:
+S*    pBuffer    - Pointer to a buffer to store the name
+S*    FileNum    - file number to convert
+S*    MaxLen     - Size of the buffer
+S*
+S*  Return value:
+S*     1 - Error
+S*     0 - Success
+S*
+S*/
+Sint _sys_tmpnam(char * pBuffer, int FileNum, unsigned MaxLen) {
+S  return (1);  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_command_string
+S*
+S*  Function description:
+S*    This function shall execute a system command.
+S*
+S*  Parameters:
+S*    cmd    - Pointer to the command string
+S*    len    - Length of the string
+S*
+S*  Return value:
+S*    == NULL - Command was not successfully executed
+S*    == sCmd - Command was passed successfully
+S*
+S*/
+Schar * _sys_command_string(char * cmd, int len) {
+S  return cmd;  // Not implemented
+S}
+S
+S/*********************************************************************
+S*
+S*       _sys_exit
+S*
+S*  Function description:
+S*    This function is called when the application returns from main
+S*
+S*  Parameters:
+S*    ReturnCode    - Return code from the main function
+S*
+S*
+S*/
+Svoid _sys_exit(int ReturnCode) {
+S  while (1);  // Not implemented
+S}
+S
+N#endif // NRF_LOG_USES_RTT == 1

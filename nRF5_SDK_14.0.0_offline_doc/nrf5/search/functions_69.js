@@ -1,0 +1,19 @@
+var searchData=
+[
+  ['ifx_5fdebug_5flog',['ifx_debug_log',['../group__ifx__i2c__hal.html#ga23361832896115f809515b7f1d9ac40c',1,'ifx_i2c_hal.h']]],
+  ['ifx_5fi2c_5fdl_5finit',['ifx_i2c_dl_init',['../group__ifx__i2c__data__link__layer.html#ga1306f96eac1b88294de1368fed554e8c',1,'ifx_i2c_data_link_layer.h']]],
+  ['ifx_5fi2c_5fdl_5freceive_5fframe',['ifx_i2c_dl_receive_frame',['../group__ifx__i2c__data__link__layer.html#gada83bdc4113daf655490cd98768595f6',1,'ifx_i2c_data_link_layer.h']]],
+  ['ifx_5fi2c_5fdl_5fsend_5fframe',['ifx_i2c_dl_send_frame',['../group__ifx__i2c__data__link__layer.html#gae69f54e01be22d9240aa17a9d5d5a5f0',1,'ifx_i2c_data_link_layer.h']]],
+  ['ifx_5fi2c_5finit',['ifx_i2c_init',['../group__ifx__i2c__hal.html#ga2f5430ef3f550539dc691134e97887b1',1,'ifx_i2c_hal.h']]],
+  ['ifx_5fi2c_5fpl_5finit',['ifx_i2c_pl_init',['../group__ifx__i2c__physical__layer.html#gac995e4e9ecfcc66def7a64fd658595c0',1,'ifx_i2c_physical_layer.h']]],
+  ['ifx_5fi2c_5fpl_5freceive_5fframe',['ifx_i2c_pl_receive_frame',['../group__ifx__i2c__physical__layer.html#gada0fdddd3d1dfe5d891bcbf2cb22825b',1,'ifx_i2c_physical_layer.h']]],
+  ['ifx_5fi2c_5fpl_5fsend_5fframe',['ifx_i2c_pl_send_frame',['../group__ifx__i2c__physical__layer.html#ga5393389e970ff1bff56d307ab9e77cd0',1,'ifx_i2c_physical_layer.h']]],
+  ['ifx_5fi2c_5freceive',['ifx_i2c_receive',['../group__ifx__i2c__hal.html#ga80204020f814237192deb53aa24fcb08',1,'ifx_i2c_hal.h']]],
+  ['ifx_5fi2c_5ftl_5finit',['ifx_i2c_tl_init',['../group__ifx__i2c__transport__layer.html#ga4a3f4bcf7228b81996f3ea3bfae321f9',1,'ifx_i2c_transport_layer.h']]],
+  ['ifx_5fi2c_5ftl_5ftransceive',['ifx_i2c_tl_transceive',['../group__ifx__i2c__transport__layer.html#ga433fcb3d36d700a93acbe905c7cba89c',1,'ifx_i2c_transport_layer.h']]],
+  ['ifx_5fi2c_5ftransmit',['ifx_i2c_transmit',['../group__ifx__i2c__hal.html#ga0e522c18b3a7a6eb44bf3fa01d4b0ca1',1,'ifx_i2c_hal.h']]],
+  ['ifx_5ftimer_5fsetup',['ifx_timer_setup',['../group__ifx__i2c__hal.html#gaa00cc70b1aa0fa9c5c066f58fb85d0a8',1,'ifx_i2c_hal.h']]],
+  ['internal_5fndef_5fmsg_5fparser',['internal_ndef_msg_parser',['../group__nfc__ndef__msg__parser__local.html#ga5960fa462b095cb20290462ba073f188',1,'nfc_ndef_msg_parser_local.h']]],
+  ['is_5faddress_5ffrom_5fstack',['is_address_from_stack',['../group__app__util.html#ga8edb2709997ea8b2f2063c8ff96e5ad7',1,'app_util.h']]],
+  ['is_5fword_5faligned',['is_word_aligned',['../group__app__util.html#gabbfc1aafc019d36f0edea9a15f03e82f',1,'app_util.h']]]
+];
