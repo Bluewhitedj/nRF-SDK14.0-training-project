@@ -100,6 +100,7 @@
 #define APP_ADV_TIMEOUT_IN_SECONDS      5                                         /**< The advertising timeout in units of seconds. */
 #define APP_ADV_SLOW_INTERVAL                800                                         /**< The advertising interval (in units of 0.625 ms. This value corresponds to 500 ms). */
 #define APP_ADV_SLOW_TIMEOUT_IN_SECONDS      10                                        /**< The advertising timeout in units of seconds. */
+#define APP_ADV_IDLE_INTERVAL         APP_TIMER_TICKS(10000)                   /**< Advertising idle interval (10s). */
 
 #define APP_BLE_OBSERVER_PRIO           1                                           /**< Application's BLE observer priority. You shouldn't need to modify this value. */
 #define APP_BLE_CONN_CFG_TAG            1                                           /**< A tag identifying the SoftDevice BLE configuration. */
@@ -131,6 +132,8 @@ BLE_BAS_DEF(m_bas);                                                 /**< Structu
 BLE_NUS_DEF(m_nus);   
 NRF_BLE_GATT_DEF(m_gatt);                                                           /**< GATT module instance. */
 BLE_ADVERTISING_DEF(m_advertising);                                                 /**< Advertising module instance. */
+
+APP_TIMER_DEF(m_app_idle_timer_id);
 
 static uint16_t m_conn_handle = BLE_CONN_HANDLE_INVALID;                            /**< Handle of the current connection. */
 static uint16_t   m_ble_nus_max_data_len = BLE_GATT_ATT_MTU_DEFAULT - 3;            /**< Maximum length of data (in bytes) that can be transmitted to the peer by the Nordic UART service module. */
@@ -361,6 +364,23 @@ static void pm_evt_handler(pm_evt_t const * p_evt)
     }
 }
 
+/**@brief Function for handling the advertising idle interval timer timeout.
+ *
+ * @details This function will be called each time the idle interval timer expires.
+ *
+ * @param[in] p_context  Pointer used for passing some arbitrary information (context) from the
+ *                       app_start_timer() call to the timeout handler.
+ */
+
+static void idle_timeout_handler(void * p_context)
+{
+	UNUSED_PARAMETER(p_context);
+	
+	uint32_t err_code = ble_advertising_start(&m_advertising, BLE_ADV_MODE_FAST);
+    APP_ERROR_CHECK(err_code);
+
+    NRF_LOG_DEBUG("advertising is started");
+}
 
 /**@brief Function for the Timer initialization.
  *
@@ -382,6 +402,8 @@ static void timers_init(void)
        uint32_t err_code;
        err_code = app_timer_create(&m_app_timer_id, APP_TIMER_MODE_REPEATED, timer_timeout_handler);
        APP_ERROR_CHECK(err_code); */
+      err_code = app_timer_create(&m_app_idle_timer_id, APP_TIMER_MODE_SINGLE_SHOT, idle_timeout_handler);
+       APP_ERROR_CHECK(err_code);
 }
 
 
@@ -624,14 +646,11 @@ static void sleep_mode_enter(void)
 
     APP_ERROR_CHECK(err_code);
 
-    // Prepare wakeup buttons.
-    err_code = bsp_btn_ble_sleep_mode_prepare();
+    // Start idle timers.
+    err_code = app_timer_start(m_app_idle_timer_id, APP_ADV_IDLE_INTERVAL, NULL);
     APP_ERROR_CHECK(err_code);
 
-    // Go to system-off mode (this function will not return; wakeup will cause a reset).
-    err_code = sd_power_system_off();
-    APP_ERROR_CHECK(err_code);
-}
+ }
 
 
 /**@brief Function for handling advertising events.
