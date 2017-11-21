@@ -83,6 +83,7 @@
 #include "ble_bas.h"
 #include "ble_nus.h"
 #include "app_uart.h"
+#include "nus_cmd_handle.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -481,31 +482,32 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
 
     if (p_evt->type == BLE_NUS_EVT_RX_DATA)
     {
-        uint32_t err_code;
-
-        NRF_LOG_DEBUG("Received data from BLE NUS. Writing data on UART.");
+        
+        NRF_LOG_DEBUG("Received data from BLE NUS. Call command handler.");
         NRF_LOG_HEXDUMP_DEBUG(p_evt->params.rx_data.p_data, p_evt->params.rx_data.length);
 
-        for (uint32_t i = 0; i < p_evt->params.rx_data.length; i++)
-        {
-            do
-            {
-                err_code = app_uart_put(p_evt->params.rx_data.p_data[i]);
-                if ((err_code != NRF_SUCCESS) && (err_code != NRF_ERROR_BUSY))
-                {
-                    NRF_LOG_ERROR("Failed receiving NUS message. Error 0x%x. ", err_code);
-                    APP_ERROR_CHECK(err_code);
-                }
-            } while (err_code == NRF_ERROR_BUSY);
-        }
-        if (p_evt->params.rx_data.p_data[p_evt->params.rx_data.length-1] == '\r')
-        {
-            while (app_uart_put('\n') == NRF_ERROR_BUSY);
-        }
+    	nus_cmd_handler(p_evt->params.rx_data.p_data, (uint8_t)p_evt->params.rx_data.length);
+       
     }
 
 }
 /**@snippet [Handling the data received over BLE] */
+uint32_t nus_send_data(uint8_t * src, uint16_t len)
+{
+	uint32_t err_code;
+
+	do
+    {
+     
+        err_code = ble_nus_string_send(&m_nus, src, &len);
+        if ( (err_code != NRF_ERROR_INVALID_STATE) && (err_code != NRF_ERROR_BUSY) )
+        {
+            APP_ERROR_CHECK(err_code);
+        }
+    } while (err_code == NRF_ERROR_BUSY);
+
+	return err_code;
+}
 
 /**@brief Function for initializing services that will be used by the application.
  */
@@ -1085,6 +1087,7 @@ int main(void)
     advertising_init();
     services_init();
     conn_params_init();
+	nus_fds_init();
 
     NRF_LOG_INFO("Application started\n");
 
