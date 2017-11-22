@@ -86,6 +86,10 @@
 #include "ble_bas.h"
 #include "ble_nus.h"
 #include "app_uart.h"
+#include "nrf_drv_spi.h"
+#include "nrf_delay.h"
+#include "nrf_drv_twi.h"
+
 
 #ifdef __cplusplus
 extern "C" {
@@ -100,6 +104,9 @@ struct nus_data_pack_s
 
 void nus_cmd_handler(uint8_t const *data_src, uint8_t data_length);
 void nus_fds_init(void);
+void nus_twi_init(void);
+void nus_spim_init(void);
+
 
 
 typedef struct nus_data_pack_s nus_data_pack_t;

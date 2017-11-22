@@ -57,6 +57,8 @@
 #include "nrf_log_default_backends.h"
 
 #define NUS_PACK_MAX_DATA_LENGTH 18
+#define NUS_PACK_MAX_LENGTH 20
+
 
 #define NUS_CMD_FDS_WR		1
 #define NUS_CMD_FDS_RD		2
@@ -106,12 +108,6 @@ char const * fds_err_str[] =
     "FDS_ERR_INTERNAL",
 };
 
-/* Keep track of the progress of a delete_all operation. */
-static struct
-{
-    bool delete_next;   //!< Delete next record.
-    bool pending;       //!< Waiting for an fds FDS_EVT_DEL_RECORD event, to delete the next record.
-} m_delete_all;
 
 #define FILE_ID         0x0007  /* The ID of the file to write the records into. */
 #define RECORD_KEY      0x1115  /* A key for the first record. */
@@ -119,6 +115,91 @@ static struct
 /* Flag to check fds initialization. */
 static bool volatile m_fds_initialized;
 
+/*********************************************/
+/**************TWI master ************/
+/**********************************************/
+
+/* Master Configuration */
+#define MASTER_TWI_INST     1       //!< TWI interface used as a master 
+#define TWI_SCL_M           3       //!< Master SCL pin.
+#define TWI_SDA_M           4       //!< Master SDA pin.
+#define NUS_TWI_SLAVE_ADD   0x55
+
+static const nrf_drv_twi_t m_twi_master = NRF_DRV_TWI_INSTANCE(MASTER_TWI_INST);
+
+/**
+ * @brief Initialize the master TWI.
+ *
+ * Function used to initialize the master TWI interface that would communicate with simulated EEPROM.
+ *
+ * @return NRF_SUCCESS or the reason of failure.
+ */
+static ret_code_t twi_master_init(void)
+{
+    ret_code_t ret;
+    const nrf_drv_twi_config_t config =
+    {
+       .scl                = TWI_SCL_M,
+       .sda                = TWI_SDA_M,
+       .frequency          = NRF_TWI_FREQ_400K,
+       .interrupt_priority = APP_IRQ_PRIORITY_HIGH,
+       .clear_bus_init     = false
+    };
+
+    ret = nrf_drv_twi_init(&m_twi_master, &config, NULL, NULL);
+
+    if (NRF_SUCCESS == ret)
+    {
+        nrf_drv_twi_enable(&m_twi_master);
+    }
+
+    return ret;
+}
+
+void nus_twi_init(void)
+{
+	ret_code_t err_code;
+
+	NRF_LOG_INFO("TWI init");
+	
+	/* Initializing TWI master interface for EEPROM */
+    err_code = twi_master_init();
+    APP_ERROR_CHECK(err_code);
+}
+
+
+/*********************************************/
+/**************SPI master ************/
+/**********************************************/
+
+#define SPI_INSTANCE  0 /**< SPI instance index. */
+static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);  /**< SPI instance. */
+
+//dj test
+static uint8_t tx_buf[] = {0x04,0x04,0x11,0x22,0x33,0x44};
+static uint8_t rx_buf[20];
+static uint8_t tx_data_length = sizeof(tx_buf);
+static uint8_t rx_data_length = 0;
+void nus_spim_init(void)
+{
+    NRF_LOG_INFO("SPIM init.");
+
+    nrf_drv_spi_config_t spi_config = NRF_DRV_SPI_DEFAULT_CONFIG;
+    spi_config.ss_pin   = SPI_SS_PIN;
+    spi_config.miso_pin = SPI_MISO_PIN;
+    spi_config.mosi_pin = SPI_MOSI_PIN;
+    spi_config.sck_pin  = SPI_SCK_PIN;
+	spi_config.frequency = (nrf_drv_spi_frequency_t)SPI_DEFAULT_FREQUENCY;
+    APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, NULL, NULL));
+
+	//dj test
+//	while(1)
+	{
+		nrf_drv_spi_transfer(&spi, tx_buf, tx_data_length, NULL, 0);
+	}
+
+
+}
 static void fds_evt_handler(fds_evt_t const * p_evt)
 {
     NRF_LOG_ERROR("Event: %s received (%s)",
@@ -152,7 +233,7 @@ static void fds_evt_handler(fds_evt_t const * p_evt)
                 NRF_LOG_INFO("File ID:\t0x%04x",    p_evt->del.file_id);
                 NRF_LOG_INFO("Record key:\t0x%04x", p_evt->del.record_key);
             }
-            m_delete_all.pending = false;
+
         } break;
 
         default:
@@ -204,14 +285,25 @@ uint32_t nus_fds_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 	fds_record_desc_t   record_desc;
 	fds_find_token_t    ftok;
 	fds_flash_record_t  flash_record;
+	static uint8_t tx_buf[NUS_PACK_MAX_LENGTH];
+	uint8_t *p_buf;
 	static uint8_t __ALIGN(sizeof(uint32_t)) wr_data[NUS_PACK_MAX_DATA_LENGTH];
-	uint16_t len;
+
 
 	switch (cmd)
 	{
 		case NUS_CMD_FDS_WR:
 		
-			memcpy(wr_data, data_src, data_length);
+			p_buf = wr_data;
+			for(uint8_t i = 0; i < (data_length + 3)/4; i++)
+			{
+				
+				p_buf[4*i] = data_src[4*i+3];
+				p_buf[4*i+1] = data_src[4*i+2];
+				p_buf[4*i+2] = data_src[4*i+1];
+				p_buf[4*i+3] = data_src[4*i];
+
+			}
 			// Set up record.
 			record.file_id           = FILE_ID;
 			record.key               = RECORD_KEY;
@@ -220,59 +312,89 @@ uint32_t nus_fds_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 			rc = fds_record_write(NULL, &record);
 			if (rc != FDS_SUCCESS)
 			{
-				NRF_LOG_ERROR("NUS FDS write error")
+				NRF_LOG_ERROR("NUS FDS write error");
 			}
 	
 			break;
 		case NUS_CMD_FDS_RD:
-				
+
 			/* It is required to zero the token before first use. */
 			memset(&ftok, 0x00, sizeof(fds_find_token_t));
-			/* Loop until all records with the given key and file ID have been found. */
-			while (fds_record_find(FILE_ID, RECORD_KEY, &record_desc, &ftok) == FDS_SUCCESS);
-		    if (fds_record_open(&record_desc, &flash_record) != FDS_SUCCESS)
-		    {
-		        /* Handle error. */
-					NRF_LOG_ERROR("NUS FDS read error")
-		    }
-		    /* Access the record through the flash_record structure. */
-			len = flash_record.p_header->length_words * 4;
-			rc = nus_send_data((uint8_t *) flash_record.p_data, len);
-				
-		    /* Close the record when done. */
-		    if (fds_record_close(&record_desc) != FDS_SUCCESS)
-		    {
-		        /* Handle error. */
-		    }
+			
+			if(fds_record_find(FILE_ID, RECORD_KEY, &record_desc, &ftok) == FDS_ERR_NOT_FOUND)
+			{
+				tx_buf[0] = 0;
+				data_length = 1;
+				rc = nus_send_data(tx_buf, data_length);
+				return rc;
+			}
+			else
+			{	/* Loop until all records with the given key and file ID have been found. */
+				while (fds_record_find(FILE_ID, RECORD_KEY, &record_desc, &ftok) == FDS_SUCCESS);
+			    if (fds_record_open(&record_desc, &flash_record) != FDS_SUCCESS)
+			    {
+			        /* Handle error. */
+						NRF_LOG_ERROR("NUS FDS read error");
+			    }
+			    /* Access the record through the flash_record structure. */
+				p_buf = (uint8_t *) flash_record.p_data;
+				for(uint8_t i = 0; i < (data_length + 3)/4; i++)
+				{
+					
+					tx_buf[4*i] = p_buf[4*i+3];
+					tx_buf[4*i+1] = p_buf[4*i+2];
+					tx_buf[4*i+2] = p_buf[4*i+1];
+					tx_buf[4*i+3] = p_buf[4*i];
 
+				}
+				
+				rc = nus_send_data(tx_buf, data_length);
+					
+			    /* Close the record when done. */
+			    if (fds_record_close(&record_desc) != FDS_SUCCESS)
+			    {
+			        /* Handle error. */
+			    }
+			}
+			
 			break;
 
 		case NUS_CMD_FDS_INC:
 			
 			/* It is required to zero the token before first use. */
 			memset(&ftok, 0x00, sizeof(fds_find_token_t));
-			/* Loop until all records with the given key and file ID have been found. */
-			while (fds_record_find(FILE_ID, RECORD_KEY, &record_desc, &ftok) == FDS_SUCCESS);
-		    if (fds_record_open(&record_desc, &flash_record) != FDS_SUCCESS)
-		    {
-		        /* Handle error. */
-					NRF_LOG_ERROR("NUS FDS read error")
-		    }
-			if(flash_record.p_header->length_words *4 < NUS_PACK_MAX_DATA_LENGTH)
+			if(fds_record_find(FILE_ID, RECORD_KEY, &record_desc, &ftok) == FDS_ERR_NOT_FOUND)
 			{
-				memcpy(wr_data, flash_record.p_data, (flash_record.p_header->length_words * 4));
-				(*((uint32_t *)(wr_data + (flash_record.p_header->length_words - 1) * 4)))++;
-				record.file_id = FILE_ID;
-				record.key = RECORD_KEY;
-				record.data.p_data = wr_data;
-				record.data.length_words = flash_record.p_header->length_words;
-				rc = fds_record_update(&record_desc, &record);
-				if (rc != FDS_SUCCESS)
+				tx_buf[0] = 0;
+				data_length = 1;
+				rc = nus_send_data(tx_buf, data_length);
+				return rc;
+			}
+			else
+			{		
+
+				/* Loop until all records with the given key and file ID have been found. */
+				while (fds_record_find(FILE_ID, RECORD_KEY, &record_desc, &ftok) == FDS_SUCCESS);
+			    if (fds_record_open(&record_desc, &flash_record) != FDS_SUCCESS)
+			    {
+			        /* Handle error. */
+						NRF_LOG_ERROR("NUS FDS read error");
+			    }
+				if(flash_record.p_header->length_words *4 < NUS_PACK_MAX_DATA_LENGTH)
 				{
-					NRF_LOG_ERROR("NUS FDS update error")
+					memcpy(wr_data, flash_record.p_data, (flash_record.p_header->length_words * 4));
+					(*((uint32_t *)wr_data))++;
+					record.file_id = FILE_ID;
+					record.key = RECORD_KEY;
+					record.data.p_data = wr_data;
+					record.data.length_words = flash_record.p_header->length_words;
+					rc = fds_record_update(&record_desc, &record);
+					if (rc != FDS_SUCCESS)
+					{
+						NRF_LOG_ERROR("NUS FDS update error");
+					}
 				}
 			}
-			
 			break;
 
 		default:
@@ -282,9 +404,121 @@ uint32_t nus_fds_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 	return rc;
 }
 
+
 uint32_t nus_spi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_length)
 {
 	ret_code_t rc;
+	static uint8_t tx_buf[NUS_PACK_MAX_LENGTH];
+	static uint8_t rx_buf[NUS_PACK_MAX_DATA_LENGTH];
+	static uint8_t wr_length;
+	uint8_t *p_buf;
+	
+	memset(rx_buf, 0x00, sizeof(rx_buf));
+	memset(tx_buf, 0x00, sizeof(tx_buf));
+	tx_buf[0] = cmd;
+	tx_buf[1] = data_length;
+	
+	switch (cmd)
+	{
+		case NUS_CMD_SPI_WR:
+			wr_length = data_length;
+			p_buf = tx_buf+2;
+			for(uint8_t i = 0; i < (data_length + 3)/4; i++)
+			{
+				
+				p_buf[4*i] = data_src[4*i+3];
+				p_buf[4*i+1] = data_src[4*i+2];
+				p_buf[4*i+2] = data_src[4*i+1];
+				p_buf[4*i+3] = data_src[4*i];
+
+			}
+
+			rc = nrf_drv_spi_transfer(&spi, tx_buf, data_length+2, NULL, 0);
+			if(rc != NRF_SUCCESS)
+			{
+				NRF_LOG_ERROR("NUS_CMD_SPI_WR: SPI write error");
+				APP_ERROR_CHECK(rc);
+			}
+			
+			break;
+		case NUS_CMD_SPI_RD:
+			if(wr_length)
+			{
+				rc = nrf_drv_spi_transfer(&spi, tx_buf, 2, NULL, 0);
+				if(rc != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("NUS_CMD_SPI_RD: SPI write error");
+					APP_ERROR_CHECK(rc);
+				}
+				nrf_delay_ms(10);
+				
+				rc = nrf_drv_spi_transfer(&spi, NULL, 0, rx_buf, data_length);
+				if(rc != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("NUS_CMD_SPI_RD: SPI read error");
+					APP_ERROR_CHECK(rc);
+				}
+				NRF_LOG_HEXDUMP_DEBUG(rx_buf, data_length);
+				p_buf = tx_buf;
+				for(uint8_t i = 0; i < (data_length + 3)/4; i++)
+				{
+					
+					p_buf[4*i] = rx_buf[4*i+3];
+					p_buf[4*i+1] = rx_buf[4*i+2];
+					p_buf[4*i+2] = rx_buf[4*i+1];
+					p_buf[4*i+3] = rx_buf[4*i];
+
+				}
+				
+				rc = nus_send_data(tx_buf, data_length);
+			}
+			else
+			{
+				tx_buf[0] = 0;
+				data_length = 1;
+				rc = nus_send_data(tx_buf, data_length);
+			}
+			break;
+		case NUS_CMD_SPI_INC:
+			if(wr_length)
+			{
+				rc = nrf_drv_spi_transfer(&spi, tx_buf, 2, NULL, 0);
+				if(rc != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("NUS_CMD_SPI_INC: SPI write error");
+					APP_ERROR_CHECK(rc);
+				}
+				
+				nrf_delay_ms(10);
+				rc = nrf_drv_spi_transfer(&spi, NULL, 0, rx_buf, wr_length);
+				if(rc != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("NUS_CMD_SPI_INC: SPI read error");
+					APP_ERROR_CHECK(rc);
+				}
+				NRF_LOG_HEXDUMP_DEBUG(rx_buf, wr_length);
+				p_buf = tx_buf;
+				for(uint8_t i = 0; i < (wr_length + 3)/4; i++)
+				{
+					
+					p_buf[4*i] = rx_buf[4*i+3];
+					p_buf[4*i+1] = rx_buf[4*i+2];
+					p_buf[4*i+2] = rx_buf[4*i+1];
+					p_buf[4*i+3] = rx_buf[4*i];
+
+				}
+				rc = nus_send_data(tx_buf, wr_length);
+			}
+			else
+			{
+				tx_buf[0] = 0;
+				data_length = 1;
+				rc = nus_send_data(tx_buf, data_length);
+			}
+			break;
+		default:
+			break;
+	}
 	
 	return rc;
 }
@@ -292,6 +526,56 @@ uint32_t nus_spi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 uint32_t nus_twi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_length)
 {
 	ret_code_t rc;
+	
+	uint8_t tx_buf[NUS_PACK_MAX_LENGTH];
+	uint8_t rx_buf[NUS_PACK_MAX_DATA_LENGTH];
+
+	tx_buf[0] = cmd;
+	tx_buf[1] = data_length;
+	switch (cmd)
+	{
+		case NUS_CMD_TWI_WR:
+			memcpy(&tx_buf[3], data_src, data_length);
+			rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, data_length+2, 0);
+			if(rc != NRF_SUCCESS)
+			{
+				NRF_LOG_ERROR("NUS_CMD_TWI_WR: TWI write error");
+				APP_ERROR_CHECK(rc);
+			}
+			
+			break;
+		case NUS_CMD_TWI_RD:
+
+			memset(rx_buf, 0x00 , sizeof(rx_buf));
+			rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, 2, 0);
+			if(rc != NRF_SUCCESS)
+			{
+				NRF_LOG_ERROR("NUS_CMD_TWI_RD: TWI write error");
+				APP_ERROR_CHECK(rc);
+			}
+			nrf_delay_ms(10);
+			
+			rc = nrf_drv_twi_rx(&m_twi_master, NUS_TWI_SLAVE_ADD, rx_buf, data_length);
+			if(rc != NRF_SUCCESS)
+			{
+				NRF_LOG_ERROR("NUS_CMD_TWI_RD: TWI write error");
+				APP_ERROR_CHECK(rc);
+			}
+			NRF_LOG_HEXDUMP_DEBUG(rx_buf, strlen((const char *)rx_buf));
+			rc = nus_send_data(rx_buf, data_length);
+			break;
+		case NUS_CMD_TWI_INC:
+			rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, 2, 0);
+			if(rc != NRF_SUCCESS)
+			{
+				NRF_LOG_ERROR("NUS_CMD_TWI_INC: TWI write error");
+				APP_ERROR_CHECK(rc);
+			}
+			
+			break;
+		default:
+			break;
+	}
 	
 	return rc;
 }

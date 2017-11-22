@@ -54,3 +54,5 @@ dkms.conf
 z_si/
 examples/ble_peripheral/ble_app_buttonless_dfu/pca10040/s132/arm5_no_packs/
 examples/peripheral/flash_fds/pca10040/s132/arm5_no_packs/
+*.TMP
+examples/

@@ -84,6 +84,7 @@
 #include "ble_nus.h"
 #include "app_uart.h"
 #include "nus_cmd_handle.h"
+#include "nrf_drv_spi.h"
 
 #include "nrf_log.h"
 #include "nrf_log_ctrl.h"
@@ -466,6 +467,9 @@ static void gap_params_init(void)
             break;
     }
    }*/
+uint8_t m_nus_pack_buf[20];
+uint8_t m_nus_pack_length;
+bool m_nus_pack_rcvd;
 
 /**@brief Function for handling the data from the Nordic UART Service.
  *
@@ -485,8 +489,9 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
         
         NRF_LOG_DEBUG("Received data from BLE NUS. Call command handler.");
         NRF_LOG_HEXDUMP_DEBUG(p_evt->params.rx_data.p_data, p_evt->params.rx_data.length);
-
-    	nus_cmd_handler(p_evt->params.rx_data.p_data, (uint8_t)p_evt->params.rx_data.length);
+				memcpy(m_nus_pack_buf, (uint8_t *)p_evt->params.rx_data.p_data, (uint8_t)p_evt->params.rx_data.length);
+			m_nus_pack_rcvd = true;
+//   	nus_cmd_handler(p_evt->params.rx_data.p_data, (uint8_t)p_evt->params.rx_data.length);
        
     }
 
@@ -1067,6 +1072,7 @@ static void uart_init(void)
 }
 /**@snippet [UART Initialization] */
 
+
 /**@brief Function for application main entry.
  */
 int main(void)
@@ -1088,6 +1094,8 @@ int main(void)
     services_init();
     conn_params_init();
 	nus_fds_init();
+	nus_spim_init();
+//	nus_twi_init();
 
     NRF_LOG_INFO("Application started\n");
 
@@ -1099,6 +1107,11 @@ int main(void)
     // Enter main loop.
     for (;;)
     {
+				if(m_nus_pack_rcvd)
+				{
+					nus_cmd_handler(m_nus_pack_buf, m_nus_pack_length);
+					m_nus_pack_rcvd = false;
+				}
         if (NRF_LOG_PROCESS() == false)
         {
             nrf_pwr_mgmt_run();

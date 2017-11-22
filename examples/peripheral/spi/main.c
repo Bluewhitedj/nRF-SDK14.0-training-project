@@ -95,7 +95,7 @@ int main(void)
         memset(m_rx_buf, 0, m_length);
         spi_xfer_done = false;
 
-        APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, m_tx_buf, m_length, m_rx_buf, m_length));
+        APP_ERROR_CHECK(nrf_drv_spi_transfer(&spi, m_tx_buf, 7, m_rx_buf, 8));
 
         while (!spi_xfer_done)
         {
