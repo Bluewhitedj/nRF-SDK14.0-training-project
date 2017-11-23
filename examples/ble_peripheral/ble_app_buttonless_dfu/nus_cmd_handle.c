@@ -109,8 +109,8 @@ char const * fds_err_str[] =
 };
 
 
-#define FILE_ID         0x0007  /* The ID of the file to write the records into. */
-#define RECORD_KEY      0x1115  /* A key for the first record. */
+#define FILE_ID         0x0008  /* The ID of the file to write the records into. */
+#define RECORD_KEY      0x1116  /* A key for the first record. */
 
 /* Flag to check fds initialization. */
 static bool volatile m_fds_initialized;
@@ -121,8 +121,8 @@ static bool volatile m_fds_initialized;
 
 /* Master Configuration */
 #define MASTER_TWI_INST     1       //!< TWI interface used as a master 
-#define TWI_SCL_M           3       //!< Master SCL pin.
-#define TWI_SDA_M           4       //!< Master SDA pin.
+#define TWI_SCL_M           27       //!< Master SCL pin.
+#define TWI_SDA_M           26       //!< Master SDA pin.
 #define NUS_TWI_SLAVE_ADD   0x55
 
 static const nrf_drv_twi_t m_twi_master = NRF_DRV_TWI_INSTANCE(MASTER_TWI_INST);
@@ -174,12 +174,15 @@ void nus_twi_init(void)
 
 #define SPI_INSTANCE  0 /**< SPI instance index. */
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);  /**< SPI instance. */
-
+#define DJ_DEBUG 0
+#if DJ_DEBUG
 //dj test
 static uint8_t tx_buf[] = {0x04,0x04,0x11,0x22,0x33,0x44};
 static uint8_t rx_buf[20];
 static uint8_t tx_data_length = sizeof(tx_buf);
 static uint8_t rx_data_length = 0;
+#endif
+
 void nus_spim_init(void)
 {
     NRF_LOG_INFO("SPIM init.");
@@ -192,12 +195,13 @@ void nus_spim_init(void)
 	spi_config.frequency = (nrf_drv_spi_frequency_t)SPI_DEFAULT_FREQUENCY;
     APP_ERROR_CHECK(nrf_drv_spi_init(&spi, &spi_config, NULL, NULL));
 
+#if DJ_DEBUG
 	//dj test
 //	while(1)
 	{
 		nrf_drv_spi_transfer(&spi, tx_buf, tx_data_length, NULL, 0);
 	}
-
+#endif
 
 }
 static void fds_evt_handler(fds_evt_t const * p_evt)
@@ -527,15 +531,31 @@ uint32_t nus_twi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 {
 	ret_code_t rc;
 	
-	uint8_t tx_buf[NUS_PACK_MAX_LENGTH];
-	uint8_t rx_buf[NUS_PACK_MAX_DATA_LENGTH];
+	static uint8_t tx_buf[NUS_PACK_MAX_LENGTH];
+	static uint8_t rx_buf[NUS_PACK_MAX_DATA_LENGTH];
+	static uint8_t wr_length;
+	uint8_t *p_buf;
 
 	tx_buf[0] = cmd;
 	tx_buf[1] = data_length;
+
+	memset(rx_buf, 0x00, sizeof(rx_buf));
+	memset(tx_buf, 0x00, sizeof(tx_buf));
+	
 	switch (cmd)
 	{
 		case NUS_CMD_TWI_WR:
-			memcpy(&tx_buf[3], data_src, data_length);
+			wr_length = data_length;
+			p_buf = tx_buf+2;
+			for(uint8_t i = 0; i < (data_length + 3)/4; i++)
+			{
+				
+				p_buf[4*i] = data_src[4*i+3];
+				p_buf[4*i+1] = data_src[4*i+2];
+				p_buf[4*i+2] = data_src[4*i+1];
+				p_buf[4*i+3] = data_src[4*i];
+
+			}
 			rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, data_length+2, 0);
 			if(rc != NRF_SUCCESS)
 			{
@@ -546,32 +566,80 @@ uint32_t nus_twi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 			break;
 		case NUS_CMD_TWI_RD:
 
-			memset(rx_buf, 0x00 , sizeof(rx_buf));
-			rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, 2, 0);
-			if(rc != NRF_SUCCESS)
+			if(wr_length)
 			{
-				NRF_LOG_ERROR("NUS_CMD_TWI_RD: TWI write error");
-				APP_ERROR_CHECK(rc);
+
+				rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, 2, 0);
+				if(rc != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("NUS_CMD_TWI_RD: TWI write error");
+					APP_ERROR_CHECK(rc);
+				}
+				nrf_delay_ms(10);
+				
+				rc = nrf_drv_twi_rx(&m_twi_master, NUS_TWI_SLAVE_ADD, rx_buf, data_length);
+				if(rc != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("NUS_CMD_TWI_RD: TWI read error");
+					APP_ERROR_CHECK(rc);
+				}
+				NRF_LOG_HEXDUMP_DEBUG(rx_buf, data_length);
+				p_buf = tx_buf;
+				for(uint8_t i = 0; i < (data_length + 3)/4; i++)
+				{
+					
+					p_buf[4*i] = rx_buf[4*i+3];
+					p_buf[4*i+1] = rx_buf[4*i+2];
+					p_buf[4*i+2] = rx_buf[4*i+1];
+					p_buf[4*i+3] = rx_buf[4*i];
+
+				}
+				rc = nus_send_data(tx_buf, data_length);
+
 			}
+			else 
+			{
+				data_length = 1;
+				tx_buf[0] = 0;
+				rc = nus_send_data(tx_buf, data_length);
+
+			}
+			break;
+		case NUS_CMD_TWI_INC:
+			if(wr_length)
+			{
+				rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, 2, 0);
+				if(rc != NRF_SUCCESS)
+				{
+					NRF_LOG_ERROR("NUS_CMD_TWI_INC: TWI write error");
+					APP_ERROR_CHECK(rc);
+				}
+
 			nrf_delay_ms(10);
 			
 			rc = nrf_drv_twi_rx(&m_twi_master, NUS_TWI_SLAVE_ADD, rx_buf, data_length);
 			if(rc != NRF_SUCCESS)
 			{
-				NRF_LOG_ERROR("NUS_CMD_TWI_RD: TWI write error");
+				NRF_LOG_ERROR("NUS_CMD_TWI_INC: TWI Read error");
 				APP_ERROR_CHECK(rc);
 			}
-			NRF_LOG_HEXDUMP_DEBUG(rx_buf, strlen((const char *)rx_buf));
-			rc = nus_send_data(rx_buf, data_length);
-			break;
-		case NUS_CMD_TWI_INC:
-			rc = nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, 2, 0);
-			if(rc != NRF_SUCCESS)
+			NRF_LOG_HEXDUMP_DEBUG(rx_buf, data_length);
+			p_buf = tx_buf;
+			for(uint8_t i = 0; i < (data_length + 3)/4; i++)
 			{
-				NRF_LOG_ERROR("NUS_CMD_TWI_INC: TWI write error");
-				APP_ERROR_CHECK(rc);
-			}
+				
+				p_buf[4*i] = rx_buf[4*i+3];
+				p_buf[4*i+1] = rx_buf[4*i+2];
+				p_buf[4*i+2] = rx_buf[4*i+1];
+				p_buf[4*i+3] = rx_buf[4*i];
 			
+			}
+			rc = nus_send_data(tx_buf, data_length);
+			}
+			else
+				{
+
+			}
 			break;
 		default:
 			break;

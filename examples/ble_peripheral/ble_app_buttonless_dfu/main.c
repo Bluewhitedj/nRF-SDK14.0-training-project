@@ -491,7 +491,6 @@ static void nus_data_handler(ble_nus_evt_t * p_evt)
         NRF_LOG_HEXDUMP_DEBUG(p_evt->params.rx_data.p_data, p_evt->params.rx_data.length);
 				memcpy(m_nus_pack_buf, (uint8_t *)p_evt->params.rx_data.p_data, (uint8_t)p_evt->params.rx_data.length);
 			m_nus_pack_rcvd = true;
-//   	nus_cmd_handler(p_evt->params.rx_data.p_data, (uint8_t)p_evt->params.rx_data.length);
        
     }
 
@@ -1095,7 +1094,7 @@ int main(void)
     conn_params_init();
 	nus_fds_init();
 	nus_spim_init();
-//	nus_twi_init();
+	nus_twi_init();
 
     NRF_LOG_INFO("Application started\n");
 
