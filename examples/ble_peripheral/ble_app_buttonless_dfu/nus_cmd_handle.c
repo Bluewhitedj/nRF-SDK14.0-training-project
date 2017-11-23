@@ -546,11 +546,10 @@ uint32_t nus_twi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 	static uint8_t wr_length;
 	uint8_t *p_buf;
 
-	tx_buf[0] = cmd;
-	tx_buf[1] = data_length;
-
 	memset(rx_buf, 0x00, sizeof(rx_buf));
 	memset(tx_buf, 0x00, sizeof(tx_buf));
+	tx_buf[0] = cmd;
+	tx_buf[1] = data_length;
 	
 	switch (cmd)
 	{
@@ -627,15 +626,15 @@ uint32_t nus_twi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 
 			nrf_delay_ms(10);
 			
-			rc = nrf_drv_twi_rx(&m_twi_master, NUS_TWI_SLAVE_ADD, rx_buf, data_length);
+			rc = nrf_drv_twi_rx(&m_twi_master, NUS_TWI_SLAVE_ADD, rx_buf, wr_length);
 			if(rc != NRF_SUCCESS)
 			{
 				NRF_LOG_ERROR("NUS_CMD_TWI_INC: TWI Read error");
 				APP_ERROR_CHECK(rc);
 			}
-			NRF_LOG_HEXDUMP_DEBUG(rx_buf, data_length);
+			NRF_LOG_HEXDUMP_DEBUG(rx_buf, wr_length);
 			p_buf = tx_buf;
-			for(uint8_t i = 0; i < (data_length + 3)/4; i++)
+			for(uint8_t i = 0; i < (wr_length + 3)/4; i++)
 			{
 				
 				p_buf[4*i] = rx_buf[4*i+3];
@@ -644,7 +643,7 @@ uint32_t nus_twi_cmd_handler(uint8_t cmd, uint8_t const *data_src, uint8_t data_
 				p_buf[4*i+3] = rx_buf[4*i];
 			
 			}
-			rc = nus_send_data(tx_buf, data_length);
+			rc = nus_send_data(tx_buf, wr_length);
 			}
 			else
 				{

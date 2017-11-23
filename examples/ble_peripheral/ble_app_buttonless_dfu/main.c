@@ -469,7 +469,7 @@ static void gap_params_init(void)
    }*/
 uint8_t m_nus_pack_buf[20];
 uint8_t m_nus_pack_length;
-bool m_nus_pack_rcvd;
+volatile bool m_nus_pack_rcvd;
 
 /**@brief Function for handling the data from the Nordic UART Service.
  *
