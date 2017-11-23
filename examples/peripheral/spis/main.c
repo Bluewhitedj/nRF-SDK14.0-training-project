@@ -39,6 +39,7 @@
  */
 #include "sdk_config.h"
 #include "nrf_drv_spis.h"
+#include "nrf_drv_twis.h"
 #include "nrf_gpio.h"
 #include "boards.h"
 #include "app_error.h"
@@ -63,6 +64,10 @@
 #define NUS_CMD_TWI_RD		8
 #define NUS_CMD_TWI_INC		9
 
+#define NUS_TWI_SLAVE_ADD 0x55
+#define TWI_SCL_S           27       //!< Slave SCL pin.
+#define TWI_SDA_S           26       //!< Slave SDA pin.
+
 struct nus_data_pack_s
 {
 	uint8_t cmd;
@@ -75,38 +80,45 @@ typedef struct nus_data_pack_s nus_data_pack_t;
 
 #define SPIS_INSTANCE 1 /**< SPIS instance index. */
 static const nrf_drv_spis_t spis = NRF_DRV_SPIS_INSTANCE(SPIS_INSTANCE);/**< SPIS instance. */
+#define TWIS_INSTANCE 0 /**< TWIS instance index. */
+static const nrf_drv_twis_t m_twis = NRF_DRV_TWIS_INSTANCE(TWIS_INSTANCE);
+
 
 static uint8_t       m_tx_buf[NUS_PACK_MAX_LENGTH];           /**< TX buffer. */
 static uint8_t       m_rx_buf[NUS_PACK_MAX_LENGTH];    /**< RX buffer. */
-static uint8_t    	 m_com_buf[NUS_PACK_MAX_DATA_LENGTH];
-static uint8_t 		 m_com_buf_length = 0;
 static uint8_t m_tx_length;        /**< Transfer length. */
+
+static uint8_t    	 m_spi_com_buf[NUS_PACK_MAX_DATA_LENGTH];
+static uint8_t 		 m_spi_com_buf_length = 0;
+static uint8_t    	 m_twi_com_buf[NUS_PACK_MAX_DATA_LENGTH];
+static uint8_t 		 m_twi_com_buf_length = 0;
 
 static volatile bool spis_xfer_done; /**< Flag used to indicate that SPIS instance completed the transfer. */
 
-void nus_cmd_handler(uint8_t const *data_src, uint8_t data_length)
+void nus_cmd_handler(uint8_t data_length)
 {
-	static bool wr_done = false;
+	static bool spi_wr_done = false;
+	static bool twi_wr_done = false;
 
 	nus_data_pack_t nus_data_pack;
-	nus_data_pack.cmd = *data_src++;
-	nus_data_pack.length = *data_src++;
-	nus_data_pack.pdata = data_src;
+	nus_data_pack.cmd = m_rx_buf[0];
+	nus_data_pack.length = m_rx_buf[1];
+	nus_data_pack.pdata = m_rx_buf+2;
 
-	
+	memset(m_tx_buf, 0x00, sizeof(m_tx_buf));
 	switch (nus_data_pack.cmd)
 	{
 		case NUS_CMD_SPI_WR:
-			memcpy(m_com_buf, nus_data_pack.pdata, nus_data_pack.length);
-			m_com_buf_length = nus_data_pack.length;
-			wr_done = true;
+			memcpy(m_spi_com_buf, nus_data_pack.pdata, nus_data_pack.length);
+			m_spi_com_buf_length = nus_data_pack.length;
+			spi_wr_done = true;
 						
 			break;
 		case NUS_CMD_SPI_RD:
 
-			if(wr_done)
+			if(spi_wr_done && (nus_data_pack.length <= m_spi_com_buf_length))
 			{
-				memcpy(m_tx_buf, m_com_buf, nus_data_pack.length);
+				memcpy(m_tx_buf, m_spi_com_buf, nus_data_pack.length);
 				m_tx_length = nus_data_pack.length;
 				
 			}
@@ -117,11 +129,45 @@ void nus_cmd_handler(uint8_t const *data_src, uint8_t data_length)
 			}
 			break;
 		case NUS_CMD_SPI_INC:
-			if(wr_done)
+			if(spi_wr_done)
 			{
-				(*((uint32_t *)m_com_buf))++;
-				memcpy(m_tx_buf, m_com_buf, m_com_buf_length);
-				m_tx_length = m_com_buf_length;
+				(*((uint32_t *)m_spi_com_buf))++;
+				memcpy(m_tx_buf, m_spi_com_buf, m_spi_com_buf_length);
+				m_tx_length = m_spi_com_buf_length;
+			}
+			else
+			{
+				m_tx_buf[0] = 0;
+				m_tx_length = 1;
+			}
+			break;
+		
+		case NUS_CMD_TWI_WR:
+			memcpy(m_twi_com_buf, nus_data_pack.pdata, nus_data_pack.length);
+			m_twi_com_buf_length = nus_data_pack.length;
+			twi_wr_done = true;
+						
+			break;
+		case NUS_CMD_TWI_RD:
+
+			if(twi_wr_done && (nus_data_pack.length <= m_twi_com_buf_length))
+			{
+				memcpy(m_tx_buf, m_twi_com_buf, nus_data_pack.length);
+				m_tx_length = nus_data_pack.length;
+				
+			}
+			else
+			{
+				m_tx_buf[0] = 0;
+				m_tx_length = 1;
+			}
+			break;
+		case NUS_CMD_TWI_INC:
+			if(twi_wr_done)
+			{
+				(*((uint32_t *)m_twi_com_buf))++;
+				memcpy(m_tx_buf, m_twi_com_buf, m_twi_com_buf_length);
+				m_tx_length = m_twi_com_buf_length;
 			}
 			else
 			{
@@ -135,6 +181,77 @@ void nus_cmd_handler(uint8_t const *data_src, uint8_t data_length)
 	
 
 }
+
+    /**
+     * @brief Event processing.
+     *
+     *
+     */
+    static void twis_event_handler(nrf_drv_twis_evt_t const * const p_event)
+    {
+        switch (p_event->type)
+        {
+        case TWIS_EVT_READ_REQ:
+            if (p_event->data.buf_req)
+            {
+                nrf_drv_twis_tx_prepare(&m_twis, m_tx_buf, m_tx_length);
+            }
+            break;
+        case TWIS_EVT_READ_DONE:
+            break;
+        case TWIS_EVT_WRITE_REQ:
+            if (p_event->data.buf_req)
+            {
+            	memset(m_rx_buf, 0x00, sizeof(m_rx_buf));
+                nrf_drv_twis_rx_prepare(&m_twis, m_rx_buf, sizeof(m_rx_buf));
+            }
+            break;
+        case TWIS_EVT_WRITE_DONE:
+			NRF_LOG_HEXDUMP_DEBUG(m_rx_buf, p_event->data.rx_amount);
+            nus_cmd_handler(p_event->data.rx_amount);
+            break;
+
+        case TWIS_EVT_READ_ERROR:
+        case TWIS_EVT_WRITE_ERROR:
+        case TWIS_EVT_GENERAL_ERROR:
+            break;
+        default:
+            break;
+        }
+    }
+
+/** @} */
+
+void nus_twis_init(void)
+{
+	uint32_t err_code;
+
+	
+    const nrf_drv_twis_config_t config =
+    {
+        .addr               = {NUS_TWI_SLAVE_ADD, 0},
+        .scl                = TWI_SCL_S,
+        .scl_pull           = NRF_GPIO_PIN_PULLUP,
+        .sda                = TWI_SDA_S,
+        .sda_pull           = NRF_GPIO_PIN_PULLUP,
+        .interrupt_priority = APP_IRQ_PRIORITY_HIGH
+    };
+
+    /* Init TWIS */
+    do
+    {
+        err_code = nrf_drv_twis_init(&m_twis, &config, twis_event_handler);
+		APP_ERROR_CHECK(err_code);
+        if (NRF_SUCCESS != err_code)
+        {
+            break;
+        }
+
+        nrf_drv_twis_enable(&m_twis);
+    }while (0);
+}
+
+
 /**
  * @brief SPIS user event handler.
  *
@@ -146,8 +263,8 @@ void spis_event_handler(nrf_drv_spis_event_t event)
     {
         spis_xfer_done = true;
         NRF_LOG_INFO(" Transfer completed");
-				NRF_LOG_HEXDUMP_INFO(m_rx_buf, event.rx_amount); //debug dj
-				nus_cmd_handler(m_rx_buf, event.rx_amount);
+				NRF_LOG_HEXDUMP_DEBUG(m_rx_buf, event.rx_amount); 
+				nus_cmd_handler(event.rx_amount);
     }
 }
 
@@ -173,7 +290,7 @@ int main(void)
 
     APP_ERROR_CHECK(nrf_drv_spis_init(&spis, &spis_config, spis_event_handler));
 	
-
+	nus_twis_init();
     while (1)
     {
         spis_xfer_done = false;

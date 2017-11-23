@@ -108,6 +108,15 @@ char const * fds_err_str[] =
     "FDS_ERR_INTERNAL",
 };
 
+#define DJ_DEBUG 0
+#if DJ_DEBUG
+//dj test
+static uint8_t tx_buf[] = {0x07,0x04,0x11,0x22,0x33,0x44};
+static uint8_t rx_buf[20];
+static uint8_t tx_data_length = sizeof(tx_buf);
+static uint8_t rx_data_length = 0;
+#endif
+
 
 #define FILE_ID         0x0008  /* The ID of the file to write the records into. */
 #define RECORD_KEY      0x1116  /* A key for the first record. */
@@ -165,6 +174,14 @@ void nus_twi_init(void)
 	/* Initializing TWI master interface for EEPROM */
     err_code = twi_master_init();
     APP_ERROR_CHECK(err_code);
+	#if DJ_DEBUG
+
+	while(1)
+	{
+		nrf_drv_twi_tx(&m_twi_master, NUS_TWI_SLAVE_ADD, tx_buf, tx_data_length, 0);
+
+	}
+	#endif
 }
 
 
@@ -174,14 +191,7 @@ void nus_twi_init(void)
 
 #define SPI_INSTANCE  0 /**< SPI instance index. */
 static const nrf_drv_spi_t spi = NRF_DRV_SPI_INSTANCE(SPI_INSTANCE);  /**< SPI instance. */
-#define DJ_DEBUG 0
-#if DJ_DEBUG
-//dj test
-static uint8_t tx_buf[] = {0x04,0x04,0x11,0x22,0x33,0x44};
-static uint8_t rx_buf[20];
-static uint8_t tx_data_length = sizeof(tx_buf);
-static uint8_t rx_data_length = 0;
-#endif
+
 
 void nus_spim_init(void)
 {

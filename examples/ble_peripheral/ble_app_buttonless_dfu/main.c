@@ -1085,6 +1085,9 @@ int main(void)
 		uart_init();
     power_management_init();
     buttons_leds_init(&erase_bonds);
+		nus_fds_init();
+	nus_spim_init();
+	nus_twi_init();
     ble_stack_init();
     peer_manager_init();
     gap_params_init();
@@ -1092,9 +1095,7 @@ int main(void)
     advertising_init();
     services_init();
     conn_params_init();
-	nus_fds_init();
-	nus_spim_init();
-	nus_twi_init();
+
 
     NRF_LOG_INFO("Application started\n");
 
